@@ -1,162 +1,143 @@
 from flask import Flask, request, jsonify, Response
-from flask_sqlalchemy import SQLAlchemy
-import os
+import psycopg2
 import csv
 import io
+import os
 
 app = Flask(__name__)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+DB_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/inventory"
+    "dbname=inventory user=postgres password=postgres host=localhost port=5432"
 )
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db = SQLAlchemy(app)
+def get_conn():
+    return psycopg2.connect(DB_URL)
 
+# ---------- CREATE TABLE ----------
+with get_conn() as conn:
+    with conn.cursor() as cur:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS items (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            price NUMERIC NOT NULL,
+            category TEXT NOT NULL
+        )
+        """)
+        conn.commit()
 
-class Item(db.Model):
-    __tablename__ = "items"
-
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
-    price = db.Column(db.Numeric, nullable=False)
-    category = db.Column(db.String, nullable=False)
-
-
-def validate_item(data, partial=False):
-    if not partial:
-        for f in ("name", "quantity", "price", "category"):
-            if f not in data:
-                return f"Missing field: {f}"
-
-    if "quantity" in data and data["quantity"] < 0:
+# ---------- VALIDATION ----------
+def validate(data):
+    if data.get("quantity", 0) < 0:
         return "Quantity cannot be negative"
-
-    if "price" in data and data["price"] <= 0:
+    if data.get("price", 1) <= 0:
         return "Price must be greater than zero"
-
     return None
 
-
+# ---------- POST /items ----------
 @app.route("/items", methods=["POST"])
-def create_item():
+def add_item():
     data = request.json
-    error = validate_item(data)
+    error = validate(data)
     if error:
         return jsonify({"error": error}), 400
 
-    item = Item(**data)
-    db.session.add(item)
-    db.session.commit()
-    return jsonify({"id": item.id}), 201
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO items (name, quantity, price, category) VALUES (%s,%s,%s,%s)",
+                (data["name"], data["quantity"], data["price"], data["category"])
+            )
+            conn.commit()
+    return jsonify({"status": "created"}), 201
 
-
+# ---------- GET /items ----------
 @app.route("/items", methods=["GET"])
 def get_items():
     category = request.args.get("category")
-    query = Item.query
-    if category:
-        query = query.filter_by(category=category)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if category:
+                cur.execute("SELECT * FROM items WHERE category=%s", (category,))
+            else:
+                cur.execute("SELECT * FROM items")
+            rows = cur.fetchall()
 
-    items = query.all()
     return jsonify([
-        {
-            "id": i.id,
-            "name": i.name,
-            "quantity": i.quantity,
-            "price": float(i.price),
-            "category": i.category
-        } for i in items
+        {"id": r[0], "name": r[1], "quantity": r[2], "price": float(r[3]), "category": r[4]}
+        for r in rows
     ])
 
-
+# ---------- PUT /items/<id> ----------
 @app.route("/items/<int:item_id>", methods=["PUT"])
 def update_item(item_id):
-    item = Item.query.get_or_404(item_id)
     data = request.json
-
-    error = validate_item(data, partial=True)
+    error = validate(data)
     if error:
         return jsonify({"error": error}), 400
 
-    for k, v in data.items():
-        setattr(item, k, v)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE items
+                SET name=%s, quantity=%s, price=%s, category=%s
+                WHERE id=%s
+            """, (data["name"], data["quantity"], data["price"], data["category"], item_id))
+            conn.commit()
 
-    db.session.commit()
     return jsonify({"status": "updated"})
 
-
+# ---------- DELETE /items/<id> ----------
 @app.route("/items/<int:item_id>", methods=["DELETE"])
 def delete_item(item_id):
-    item = Item.query.get_or_404(item_id)
-    db.session.delete(item)
-    db.session.commit()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM items WHERE id=%s", (item_id,))
+            conn.commit()
     return "", 204
 
-
+# ---------- GET /reports/summary ----------
 @app.route("/reports/summary", methods=["GET"])
-def report_summary():
+def report():
     format_ = request.args.get("format", "json")
-    items = Item.query.all()
 
-    total_value = 0
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name, quantity, price, category FROM items")
+            rows = cur.fetchall()
+
+    total = 0
     categories = {}
-    invalid_items = []
+    bad_items = []
 
-    for i in items:
-        value = float(i.price) * i.quantity
-        total_value += value
+    for name, qty, price, cat in rows:
+        value = qty * float(price)
+        total += value
 
-        if i.category not in categories:
-            categories[i.category] = {
-                "total_quantity": 0,
-                "total_value": 0
-            }
+        categories.setdefault(cat, {"quantity": 0, "value": 0})
+        categories[cat]["quantity"] += qty
+        categories[cat]["value"] += value
 
-        categories[i.category]["total_quantity"] += i.quantity
-        categories[i.category]["total_value"] += value
-
-        if i.quantity <= 0:
-            invalid_items.append({
-                "id": i.id,
-                "name": i.name,
-                "quantity": i.quantity,
-                "price": float(i.price),
-                "category": i.category
-            })
+        if qty <= 0:
+            bad_items.append(name)
 
     report = {
-        "total_inventory_value": total_value,
+        "total_value": total,
         "categories": categories,
-        "items_with_non_positive_quantity": invalid_items
+        "bad_items": bad_items
     }
 
     if format_ == "csv":
-        output = io.StringIO()
-        writer = csv.writer(output)
-
-        writer.writerow(["TOTAL INVENTORY VALUE", total_value])
-        writer.writerow([])
-        writer.writerow(["CATEGORY", "QUANTITY", "VALUE"])
-
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(["TOTAL", total])
         for c, v in categories.items():
-            writer.writerow([c, v["total_quantity"], v["total_value"]])
-
-        writer.writerow([])
-        writer.writerow(["ITEMS WITH ZERO OR NEGATIVE QUANTITY"])
-        writer.writerow(["ID", "NAME", "QUANTITY", "PRICE", "CATEGORY"])
-
-        for i in invalid_items:
-            writer.writerow(i.values())
-
-        return Response(output.getvalue(), mimetype="text/csv")
+            w.writerow([c, v["quantity"], v["value"]])
+        return Response(out.getvalue(), mimetype="text/csv")
 
     return jsonify(report)
 
-
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True)
+    app.run()
