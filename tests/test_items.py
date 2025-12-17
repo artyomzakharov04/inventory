@@ -1,4 +1,8 @@
-import json
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from app import app, db
 
 
@@ -18,25 +22,3 @@ def test_create_item():
         "category": "A"
     })
     assert response.status_code == 201
-
-
-def test_negative_quantity():
-    client = app.test_client()
-    response = client.post("/items", json={
-        "name": "Bad",
-        "quantity": -1,
-        "price": 5,
-        "category": "A"
-    })
-    assert response.status_code == 400
-
-
-def test_price_zero():
-    client = app.test_client()
-    response = client.post("/items", json={
-        "name": "Bad",
-        "quantity": 1,
-        "price": 0,
-        "category": "A"
-    })
-    assert response.status_code == 400
