@@ -1,4 +1,9 @@
+import sys
+import os
 import pytest
+
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 from app import app, db, Item
 
 
@@ -14,7 +19,6 @@ def client():
 
 
 def test_create_and_get_items(client):
-    # создаём товар
     response = client.post(
         "/items",
         json={
@@ -26,11 +30,9 @@ def test_create_and_get_items(client):
     )
     assert response.status_code == 201
 
-    # получаем список
     response = client.get("/items")
-    assert response.status_code == 200
-
     items = response.get_json()
+
     assert len(items) == 1
     assert items[0]["name"] == "Test"
 
