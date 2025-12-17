@@ -9,10 +9,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///local.db"  # fallback для тестов и CI
+
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
 
 # =========================
 # МОДЕЛЬ
@@ -218,4 +225,6 @@ def update_quantity_put(item_id):
 # =========================
 if __name__ == "__main__":
     app.run()
+
+
 
