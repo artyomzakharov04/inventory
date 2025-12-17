@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Обновить количество</title>
+</head>
+<body>
+<h2>Изменить количество товара</h2>
+
+<label>ID товара:</label><br>
+<input type="number" id="item_id"><br><br>
+
+<label>Изменение (+1 / -1):</label><br>
+<input type="number" id="delta"><br><br>
+
+<button onclick="updateQuantity()">Обновить</button>
+
+<p id="result"></p>
+
+<script>
+function updateQuantity() {
+    const itemId = document.getElementById("item_id").value;
+    const delta = document.getElementById("delta").value;
+
+    fetch(`/items/${itemId}/quantity`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ delta: delta })
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("result").innerText =
+            data.message || data.error;
+    });
+}
+</script>
+
+</body>
+</html>

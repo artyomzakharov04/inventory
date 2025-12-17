@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Удалить товар</title>
+</head>
+<body>
+    <h1>Удалить товар</h1>
+
+    <label>ID товара:</label><br>
+    <input type="number" id="itemId"><br><br>
+
+    <button onclick="deleteItem()">Удалить</button>
+
+    <p id="result"></p>
+
+    <script>
+        function deleteItem() {
+            const id = document.getElementById("itemId").value;
+
+            fetch(`/items/${id}`, {
+                method: "DELETE"
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("result").innerText =
+                    data.message || data.error;
+            })
+            .catch(err => {
+                document.getElementById("result").innerText = "Ошибка";
+            });
+        }
+    </script>
+</body>
+</html>
