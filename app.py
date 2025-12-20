@@ -3,9 +3,6 @@ from flask import Flask, request, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 
-# =========================
-# НАСТРОЙКИ
-# =========================
 load_dotenv()
 
 app = Flask(__name__)
@@ -13,16 +10,12 @@ app = Flask(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    DATABASE_URL = "sqlite:///local.db"  # fallback для тестов и CI
+    DATABASE_URL = "sqlite:///local.db"  
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 
 db = SQLAlchemy(app)
 
-
-# =========================
-# МОДЕЛЬ
-# =========================
 class Item(db.Model):
     __tablename__ = "items"
 
@@ -32,15 +25,9 @@ class Item(db.Model):
     price = db.Column(db.Float, nullable=False)
     category = db.Column(db.String(100), nullable=False)
 
-# =========================
-# СОЗДАНИЕ ТАБЛИЦЫ
-# =========================
 with app.app_context():
     db.create_all()
 
-# =========================
-# API: GET /items
-# =========================
 @app.route("/items", methods=["GET"])
 def get_items():
     category = request.args.get("category")
@@ -61,9 +48,6 @@ def get_items():
         for item in items
     ])
 
-# =========================
-# API: POST /items (JSON)
-# =========================
 @app.route("/items", methods=["POST"])
 def create_item():
     data = request.get_json()
@@ -97,9 +81,6 @@ def create_item():
 
     return {"message": "Item created", "id": item.id}, 201
 
-# =========================
-# API: DELETE /items/<id>
-# =========================
 @app.route("/items/<int:item_id>", methods=["DELETE"])
 def delete_item(item_id):
     item = Item.query.get(item_id)
@@ -112,9 +93,6 @@ def delete_item(item_id):
 
     return {"message": f"Item {item_id} deleted"}
 
-# =========================
-# WEB: ДОБАВЛЕНИЕ ТОВАРА
-# =========================
 @app.route("/add-item", methods=["GET", "POST"])
 def add_item_page():
     if request.method == "POST":
@@ -139,6 +117,7 @@ def add_item_page():
         return "Товар добавлен"
 
     return render_template("add_item.html")
+    
 @app.route("/reports/summary", methods=["GET"])
 def inventory_summary():
     # 1. Общая стоимость всех товаров
@@ -179,20 +158,14 @@ def inventory_summary():
     })
 
 
-# =========================
-# WEB: УДАЛЕНИЕ ТОВАРА (DELETE)
-# =========================
 @app.route("/delete-item")
 def delete_item_page():
     return render_template("delete_item.html")
 
-# HTML-страница (ТОЛЬКО GET)
 @app.route("/update-quantity", methods=["GET"])
 def update_quantity_page():
     return render_template("update_quantity.html")
 
-
-# API — изменение количества (ТОЛЬКО PUT)
 @app.route("/items/<int:item_id>/quantity", methods=["PUT"])
 def update_quantity_put(item_id):
     data = request.get_json()
@@ -218,10 +191,7 @@ def update_quantity_put(item_id):
     }
 
 
-
-# =========================
-# ЗАПУСК
-# =========================
 if __name__ == "__main__":
     app.run()
+
 
