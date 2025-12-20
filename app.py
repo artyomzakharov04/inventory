@@ -16,7 +16,6 @@ if not DATABASE_URL:
     DATABASE_URL = "sqlite:///local.db"  # fallback для тестов и CI
 
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 
@@ -225,3 +224,4 @@ def update_quantity_put(item_id):
 # =========================
 if __name__ == "__main__":
     app.run()
+
